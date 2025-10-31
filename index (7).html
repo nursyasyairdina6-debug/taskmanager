@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Manager App</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen flex items-start justify-center bg-gray-50 p-4">
+  <div class="w-full max-w-md">
+    <header class="bg-white rounded-2xl shadow p-4 sticky top-4">
+      <h1 class="text-2xl sm:text-3xl font-semibold mb-1">Tasks</h1>
+      <p class="text-sm text-gray-500 mb-3">Mobile-first task manager — local-only</p>
+
+      <form id="task-form" class="flex gap-2" aria-label="Add new task">
+        <label for="new-task" class="sr-only">Add new task</label>
+        <input id="new-task" type="text"
+          class="flex-1 rounded-lg border border-gray-200 p-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          placeholder="What needs doing?" aria-label="New task description" />
+        <button type="submit"
+          class="inline-flex items-center gap-2 px-4 py-3 rounded-lg bg-indigo-600 text-white font-medium text-sm shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          aria-label="Add task">Add</button>
+      </form>
+
+      <div class="mt-3 flex justify-between items-center text-sm text-gray-600">
+        <div id="task-count" aria-live="polite">0 left</div>
+        <div class="flex gap-2">
+          <button id="uncheck-all" class="px-3 py-1 rounded-md border border-gray-200 text-xs">Uncheck all</button>
+          <button id="check-all" class="px-3 py-1 rounded-md border border-gray-200 text-xs">Check all</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="task-list" class="mt-4">
+      <ul id="tasks" role="list" class="space-y-3"></ul>
+      <footer id="footer-actions" class="mt-4 hidden justify-between items-center bg-white p-3 rounded-lg shadow-sm">
+        <div id="total-tasks" class="text-sm text-gray-600"></div>
+        <div class="flex gap-2">
+          <button id="clear-completed" class="text-sm px-3 py-1 rounded-md border border-gray-200">Clear completed</button>
+          <button id="delete-all" class="text-sm px-3 py-1 rounded-md border border-red-200 text-red-600">Delete all</button>
+        </div>
+      </footer>
+      <p class="text-xs text-gray-400 mt-3">Tasks are stored locally on this device only.</p>
+    </main>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "tasks-v1";
+    const tasksEl = document.getElementById("tasks");
+    const taskForm = document.getElementById("task-form");
+    const newTaskInput = document.getElementById("new-task");
+    const taskCountEl = document.getElementById("task-count");
+    const footer = document.getElementById("footer-actions");
+    const totalTasksEl = document.getElementById("total-tasks");
+
+    let tasks = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+
+    function saveTasks() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+      renderTasks();
+    }
+
+    function renderTasks() {
+      tasksEl.innerHTML = "";
+      if (tasks.length === 0) {
+        tasksEl.innerHTML = `<li class="bg-white rounded-lg p-4 text-center text-gray-500 shadow-sm">No tasks yet — add your first task above</li>`;
+        footer.classList.add("hidden");
+      } else {
+        footer.classList.remove("hidden");
+      }
+
+      tasks.forEach(task => {
+        const li = document.createElement("li");
+        li.className = "bg-white rounded-lg p-3 shadow-sm flex items-start gap-3";
+
+        const btn = document.createElement("button");
+        btn.className = "flex-none p-2 rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300";
+        btn.setAttribute("aria-pressed", task.completed);
+        btn.innerHTML = task.completed
+          ? `<svg xmlns='http://www.w3.org/2000/svg' class='w-5 h-5' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.859a1 1 0 011.414-1.414L8 11.747l6.293-6.293a1 1 0 011.414 0z' clip-rule='evenodd'/></svg>`
+          : `<svg xmlns='http://www.w3.org/2000/svg' class='w-5 h-5' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/></svg>`;
+        btn.addEventListener("click", () => toggleTask(task.id));
+
+        const p = document.createElement("p");
+        p.className = "flex-1 min-w-0 text-base break-words " + (task.completed ? "line-through text-gray-400" : "text-gray-900");
+        p.textContent = task.text;
+
+        const time = document.createElement("time");
+        time.className = "text-xs text-gray-400";
+        time.textContent = new Date(task.createdAt).toLocaleDateString();
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "p-2 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-red-300";
+        delBtn.innerHTML = `<svg xmlns='http://www.w3.org/2000/svg' class='w-4 h-4' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'><polyline points='3 6 5 6 21 6'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/><path d='M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'/></svg>`;
+        delBtn.addEventListener("click", () => deleteTask(task.id));
+
+        const meta = document.createElement("div");
+        meta.className = "flex gap-2 items-center";
+        meta.appendChild(time);
+        meta.appendChild(delBtn);
+
+        const content = document.createElement("div");
+        content.className = "flex justify-between items-start gap-3 flex-1 min-w-0";
+        content.appendChild(p);
+        content.appendChild(meta);
+
+        li.appendChild(btn);
+        li.appendChild(content);
+        tasksEl.appendChild(li);
+      });
+
+      const remaining = tasks.filter(t => !t.completed).length;
+      taskCountEl.textContent = `${remaining} left`;
+      totalTasksEl.textContent = `${tasks.length} total`;
+    }
+
+    function addTask(text) {
+      tasks.unshift({
+        id: Date.now().toString(),
+        text,
+        completed: false,
+        createdAt: new Date().toISOString(),
+      });
+      saveTasks();
+    }
+
+    function deleteTask(id) {
+      tasks = tasks.filter(t => t.id !== id);
+      saveTasks();
+    }
+
+    function toggleTask(id) {
+      tasks = tasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t));
+      saveTasks();
+    }
+
+    document.getElementById("clear-completed").onclick = () => {
+      tasks = tasks.filter(t => !t.completed);
+      saveTasks();
+    };
+
+    document.getElementById("delete-all").onclick = () => {
+      if (confirm("Delete all tasks?")) {
+        tasks = [];
+        saveTasks();
+      }
+    };
+
+    document.getElementById("check-all").onclick = () => {
+      tasks = tasks.map(t => ({ ...t, completed: true }));
+      saveTasks();
+    };
+
+    document.getElementById("uncheck-all").onclick = () => {
+      tasks = tasks.map(t => ({ ...t, completed: false }));
+      saveTasks();
+    };
+
+    taskForm.onsubmit = (e) => {
+      e.preventDefault();
+      const text = newTaskInput.value.trim();
+      if (!text) return;
+      addTask(text);
+      newTaskInput.value = "";
+      newTaskInput.focus();
+    };
+
+    renderTasks();
+  </script>
+</body>
+</html>
